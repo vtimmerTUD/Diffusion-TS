@@ -87,7 +87,9 @@ class Diffusion_TS(nn.Module):
             sampling_timesteps, timesteps)  # default num sampling timesteps to number of timesteps at training
 
         assert self.sampling_timesteps <= timesteps
-        self.fast_sampling = self.sampling_timesteps < timesteps
+        #self.fast_sampling = self.sampling_timesteps < timesteps
+        self.fast_sampling = True # Always use DDIM
+        print("DDIM sampling enabled")
 
         # helper function to register buffer from float64 to float32
 
