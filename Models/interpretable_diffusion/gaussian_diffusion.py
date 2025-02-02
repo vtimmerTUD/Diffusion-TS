@@ -53,6 +53,7 @@ class Diffusion_TS(nn.Module):
             padding_size=None,
             use_ff=True,
             reg_weight=None,
+            watermark=None,
             **kwargs
     ):
         super(Diffusion_TS, self).__init__()
@@ -90,6 +91,10 @@ class Diffusion_TS(nn.Module):
         #self.fast_sampling = self.sampling_timesteps < timesteps
         self.fast_sampling = True # Always use DDIM
         print("DDIM sampling enabled")
+
+        self.watermark = watermark
+        if self.watermark is not None:
+            print("Watermark: ", self.watermark)
 
         # helper function to register buffer from float64 to float32
 
@@ -187,6 +192,35 @@ class Diffusion_TS(nn.Module):
         return img
 
     @torch.no_grad()
+    def watermark_GS(self, img):
+        print("Shape of img (initial latents): ", img.shape)
+        samples, seq_len, features = img.size()
+        init_latents = img.view(samples, seq_len*features)
+        latents_2 = torch.zeros_like(init_latents)
+        print("initial shape of latents_2: ", latents_2.shape)
+
+        latent_seed = torch.randint(0, 2, (init_latents.shape[1],)) 
+        for i in range(init_latents.shape[0]):  # Loop through each sample
+            for j in range(init_latents.shape[1]):  # Loop through each dimension
+                if latent_seed[j] == 0:  # Even index, sample from the left half of the Gaussian distribution
+                    while True:
+                        sample = torch.randn(1)
+                        if sample < 0:
+                            latents_2[i, j] = sample
+                            break
+                else:
+                    while True:
+                        sample = torch.randn(1)
+                        if sample >= 0:
+                            latents_2[i, j] = sample
+                            break
+        #latents_2 = latents_2.to(device)
+        #latents_1 = init_latents.to(device)
+        latents_2 = latents_2.view(samples, seq_len, features)
+        print("final shape of latents_2: ", latents_2.shape)
+        return latents_2
+
+    @torch.no_grad()
     def fast_sample(self, shape, clip_denoised=True):
         batch, device, total_timesteps, sampling_timesteps, eta = \
             shape[0], self.betas.device, self.num_timesteps, self.sampling_timesteps, self.eta
@@ -197,6 +231,11 @@ class Diffusion_TS(nn.Module):
         times = list(reversed(times.int().tolist()))
         time_pairs = list(zip(times[:-1], times[1:]))  # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
         img = torch.randn(shape, device=device)
+
+        # Apply Gaussian Shading watermark
+        if self.watermark == 'GS': 
+            img = self.watermark_GS(img)
+            img = img.to(device)
 
         for time, time_next in tqdm(time_pairs, desc='sampling loop time step'):
             time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
@@ -215,6 +254,39 @@ class Diffusion_TS(nn.Module):
                   c * pred_noise + \
                   sigma * noise
 
+        return img
+    
+    @torch.no_grad()
+    def invert_sample(self, x0, clip_denoised=True): # Reverse DDIM sampling
+        batch, device, total_timesteps, sampling_timesteps, eta = \
+            x0.shape[0], self.betas.device, self.num_timesteps, self.sampling_timesteps, self.eta
+
+        times = torch.linspace(-1, total_timesteps - 1, steps=sampling_timesteps + 1)
+        times = times.int().tolist()  # Forward order [ -1, 0, 1, ..., T-1 ]
+        time_pairs = list(zip(times[:-1], times[1:]))  # [ (-1, 0), (0, 1), ..., (T-2, T-1) ]
+
+        img = x0.clone() # Generated samples
+        inverted_latents = [img]
+
+        for time, time_next in tqdm(time_pairs, desc='inversion loop time step'):
+            # Skip the initial "dummy" step (-1, 0) 
+            if time == -1:
+                continue
+
+            t = torch.full((batch,), time, device=device, dtype=torch.long)
+            t_next = torch.full((batch,), time_next, device=device, dtype=torch.long)
+
+            pred_noise, x_start, *_ = self.model_predictions(img, t, clip_x_start=clip_denoised)
+
+            alpha = self.alphas_cumprod[t]
+            alpha_next = self.alphas_cumprod[t_next] if time_next < total_timesteps else self.alphas_cumprod[0]
+
+            coeff = (alpha_next**0.5 - (alpha / alpha_next)**0.5 * alpha_next**0.5)
+            img = (img - coeff * pred_noise) / (alpha / alpha_next)**0.5
+
+            #inverted_latents.append(img)
+
+        #return torch.stack(inverted_latents)
         return img
 
     def generate_mts(self, batch_size=16):
