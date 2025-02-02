@@ -247,7 +247,7 @@ class Diffusion_TS(nn.Module):
         latents = inject_watermark(init_latent_w, watermarking_mask, gt_patch)
         latents = latents.squeeze(0) # only one squeeze necessary 
         print("shape of latents after squeezing: ", latents.shape)
-        latents = torch.permute(init_latents, (1, 0, 2))
+        latents = torch.permute(latents, (1, 0, 2))
         print("shape of latents after reordering: ", latents.shape)
         latents_2 = latents.to(device)
 
