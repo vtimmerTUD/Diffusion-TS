@@ -232,6 +232,8 @@ class Diffusion_TS(nn.Module):
         print("Shape of init latents (img) before unsqueezing: ", init_latents.shape)
 
         # change from two-dimensional table into watermark size [1, c, l, w]
+        torch.permute(init_latents, (1, 0, 2))
+        print("Shape of unsqueezed init latents (img) after reordering: ", init_latents.shape)
         init_latents = init_latents.unsqueeze(0) # only one unsqueeze necessary i think? 
         print("Shape of unsqueezed init latents (img): ", init_latents.shape)
         init_latent_w = copy.deepcopy(init_latents)
@@ -245,6 +247,8 @@ class Diffusion_TS(nn.Module):
         latents = inject_watermark(init_latent_w, watermarking_mask, gt_patch)
         latents = latents.squeeze(0) # only one squeeze necessary 
         print("shape of latents after squeezing: ", latents.shape)
+        torch.permute(init_latents, (1, 0, 2))
+        print("shape of latents after reordering: ", latents.shape)
         latents_2 = latents.to(device)
 
         # saving gt_patch and watermarking_mask
