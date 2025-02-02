@@ -45,6 +45,9 @@ def parse_args():
     # args for modify config
     parser.add_argument('opts', help='Modify config options using the command-line',
                         default=None, nargs=argparse.REMAINDER)  
+    
+    # args for watermark
+    parser.add_argument('--watermark', type=str, default=None, help='Treering or GS') # TODO: extend help description with new watermark
 
     args = parser.parse_args()
     args.save_dir = os.path.join(args.output, f'{args.name}')
@@ -92,7 +95,10 @@ def main():
         if dataset.auto_norm:
             samples = unnormalize_to_zero_to_one(samples)
             # samples = dataset.scaler.inverse_transform(samples.reshape(-1, samples.shape[-1])).reshape(samples.shape)
-        np.save(os.path.join(args.save_dir, f'ddpm_fake_{args.name}.npy'), samples)
+        if args.watermark is not None:
+            np.save(os.path.join(args.save_dir, f'ddim_fake_{args.name}_{args.watermark}.npy'), samples)
+        else:
+            np.save(os.path.join(args.save_dir, f'ddim_fake_{args.name}.npy'), samples)
 
 if __name__ == '__main__':
     main()

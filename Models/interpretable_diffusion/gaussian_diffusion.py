@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn.functional as F
+import numpy as np
 
 from torch import nn
 from einops import reduce
@@ -8,6 +9,7 @@ from tqdm.auto import tqdm
 from functools import partial
 from Models.interpretable_diffusion.transformer import Transformer
 from Models.interpretable_diffusion.model_utils import default, identity, extract
+from Models.interpretable_diffusion.watermark_utils import *
 
 
 # gaussian diffusion trainer class
@@ -221,6 +223,39 @@ class Diffusion_TS(nn.Module):
         return latents_2
 
     @torch.no_grad()
+    def watermark_Treering(self, img, save_dir):
+        device = self.betas.device
+        init_latents = img
+
+        # latents_1: no watermark, latents_2: with watermark
+        latents_1 = init_latents.to(device)
+        print("Shape of init latents (img) before unsqueezing: ", init_latents.shape)
+
+        # change from two-dimensional table into watermark size [1, c, l, w]
+        init_latents = init_latents.unsqueeze(0) # only one unsqueeze necessary i think? 
+        print("Shape of unsqueezed init latents (img): ", init_latents.shape)
+        init_latent_w = copy.deepcopy(init_latents)
+
+        gt_patch = get_watermarking_pattern(device, shape=init_latent_w.shape, seed=0)
+
+        # get watermarking mask
+        watermarking_mask = get_watermarking_mask(init_latent_w, device)
+
+        # inject watermark
+        latents = inject_watermark(init_latent_w, watermarking_mask, gt_patch)
+        latents = latents.squeeze(0) # only one squeeze necessary 
+        print("shape of latents after squeezing: ", latents.shape)
+        latents_2 = latents.to(device)
+
+        # saving gt_patch and watermarking_mask
+        np_gt_patch = gt_patch.detach().cpu().numpy()
+        np_watermarking_mask = watermarking_mask.detach().cpu().numpy()
+        np.save(f'{save_dir}/gt_patch.npy', np_gt_patch)
+        np.save(f'{save_dir}/watermarking_mask.npy', np_watermarking_mask)
+
+        return latents_2
+
+    @torch.no_grad()
     def fast_sample(self, shape, clip_denoised=True):
         batch, device, total_timesteps, sampling_timesteps, eta = \
             shape[0], self.betas.device, self.num_timesteps, self.sampling_timesteps, self.eta
@@ -232,8 +267,13 @@ class Diffusion_TS(nn.Module):
         time_pairs = list(zip(times[:-1], times[1:]))  # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
         img = torch.randn(shape, device=device)
 
+        # Apply Treering watermark
+        if self.watermark == 'Treering':
+            save_dir = 'treering'
+            img = self.watermark_Treering(img, save_dir=save_dir)
+
         # Apply Gaussian Shading watermark
-        if self.watermark == 'GS': 
+        elif self.watermark == 'GS': 
             img = self.watermark_GS(img)
             img = img.to(device)
 
