@@ -30,11 +30,11 @@ def circle_mask(height=17117, width=44, r=10, x_offset=0, y_offset=0):
     return ((x - x0)**2 + (y-y0)**2)<= r**2
 
 
-def get_watermarking_mask(init_latents_w, device, w_mask_shape='circle'):
+def get_watermarking_mask(init_latents_w, device, w_mask_shape='circle', w_radius=100):
     watermarking_mask = torch.zeros(init_latents_w.shape, dtype=torch.bool).to(device)
 
     if w_mask_shape == 'circle':
-        np_mask = circle_mask(height=init_latents_w.shape[-2], width=init_latents_w.shape[-1], r=args.w_radius)
+        np_mask = circle_mask(height=init_latents_w.shape[-2], width=init_latents_w.shape[-1], r=w_radius)
         torch_mask = torch.tensor(np_mask).to(device)
 
         watermarking_mask[:, :] = torch_mask
@@ -45,7 +45,7 @@ def get_watermarking_mask(init_latents_w, device, w_mask_shape='circle'):
         #     watermarking_mask[:, args.w_channel] = torch_mask
     elif w_mask_shape == 'square':
         anchor_p = init_latents_w.shape[-1] // 2
-        watermarking_mask[:, :, anchor_p-args.w_radius:anchor_p+args.w_radius, anchor_p-args.w_radius:anchor_p+args.w_radius] = True
+        watermarking_mask[:, :, anchor_p-w_radius:anchor_p+w_radius, anchor_p-w_radius:anchor_p+w_radius] = True
 
         # if args.w_channel == -1:
         #     # all channels
@@ -55,7 +55,7 @@ def get_watermarking_mask(init_latents_w, device, w_mask_shape='circle'):
     elif w_mask_shape == 'no':
         pass
     else:
-        raise NotImplementedError(f'w_mask_shape: {args.w_mask_shape}')
+        raise NotImplementedError(f'w_mask_shape: {w_mask_shape}')
 
     return watermarking_mask
 
