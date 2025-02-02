@@ -254,8 +254,10 @@ class Diffusion_TS(nn.Module):
         # saving gt_patch and watermarking_mask
         np_gt_patch = gt_patch.detach().cpu().numpy()
         np_watermarking_mask = watermarking_mask.detach().cpu().numpy()
-        np.save(f'{save_dir}/gt_patch.npy', np_gt_patch)
-        np.save(f'{save_dir}/watermarking_mask.npy', np_watermarking_mask)
+        # np.save(f'{save_dir}/gt_patch.npy', np_gt_patch)
+        # np.save(f'{save_dir}/watermarking_mask.npy', np_watermarking_mask)
+        np.save(f'gt_patch.npy', np_gt_patch)
+        np.save(f'watermarking_mask.npy', np_watermarking_mask)
 
         return latents_2
 
