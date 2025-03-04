@@ -392,7 +392,7 @@ class Diffusion_TS(nn.Module):
     #     sample_fn = self.fast_sample if self.fast_sampling else self.sample
     #     return sample_fn((batch_size, seq_length, feature_size))
 
-    def generate_mts(self, args, batch_size=16, watermark=""):
+    def generate_mts(self, batch_size=16, watermark="GS"):
         shape = (batch_size, self.seq_length, self.feature_size)
         device = self.betas.device
 
@@ -403,40 +403,7 @@ class Diffusion_TS(nn.Module):
 
         init_latents = torch.randn(shape, device=device)
 
-        if watermark == "TR":
-            st0 = torch.get_rng_state()
-            torch.manual_seed(217)
-
-            latents = torch.empty((0, shape[1], shape[2]), device=device)
-            gt_patches = np.empty([0, 1, shape[1], shape[2]])
-            watermarking_masks = np.empty([0, 1, shape[1], shape[2]], dtype=bool)
-
-            for init_latent in init_latents:
-                # change from two-dimensional table into watermark size [1, c, l, w]
-                init_latent = init_latent.unsqueeze(0).unsqueeze(0)
-                init_latent_w = copy.deepcopy(init_latent)
-                gt_patch = get_watermarking_pattern(
-                    args, device, shape=init_latent_w.shape
-                )
-                # get watermarking mask
-                watermarking_mask = get_watermarking_mask(init_latent_w, args, device)
-                # inject watermark
-                latent = inject_watermark(
-                    init_latent_w, watermarking_mask, gt_patch, args
-                )
-                latent = latent.squeeze(0)  # (bs, seq_len, feat)
-
-                latents = torch.vstack((latents, latent))
-                gt_patches = np.row_stack([gt_patches, gt_patch.detach().cpu().numpy()])
-                watermarking_masks = np.row_stack(
-                    [watermarking_masks, watermarking_mask.detach().cpu().numpy()]
-                )
-            latents = latents.to(device)
-            torch.set_rng_state(st0)
-
-            return sample_fn(shape, latents), gt_patches, watermarking_masks
-
-        elif watermark == "GS":
+        if watermark == "GS":
             st0 = torch.get_rng_state()
             torch.manual_seed(217)
 
