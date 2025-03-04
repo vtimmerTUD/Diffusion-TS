@@ -273,44 +273,84 @@ class Diffusion_TS(nn.Module):
 
         return latents_2
 
+    # @torch.no_grad()
+    # def fast_sample(self, shape, clip_denoised=True):
+    #     batch, device, total_timesteps, sampling_timesteps, eta = \
+    #         shape[0], self.betas.device, self.num_timesteps, self.sampling_timesteps, self.eta
+
+    #     # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
+    #     times = torch.linspace(-1, total_timesteps - 1, steps=sampling_timesteps + 1)
+
+    #     times = list(reversed(times.int().tolist()))
+    #     time_pairs = list(zip(times[:-1], times[1:]))  # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
+    #     img = torch.randn(shape, device=device)
+
+    #     # Apply Treering watermark
+    #     if self.watermark == 'Treering':
+    #         save_dir = 'treering'
+    #         img = self.watermark_Treering(img, save_dir=save_dir)
+
+    #     # Apply Gaussian Shading watermark
+    #     elif self.watermark == 'GS': 
+    #         img = self.watermark_GS(img)
+        
+    #     img = img.to(device)
+
+    #     for time, time_next in tqdm(time_pairs, desc='sampling loop time step'):
+    #         time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
+    #         pred_noise, x_start, *_ = self.model_predictions(img, time_cond, clip_x_start=clip_denoised)
+
+    #         if time_next < 0:
+    #             img = x_start
+    #             continue
+
+    #         alpha = self.alphas_cumprod[time]
+    #         alpha_next = self.alphas_cumprod[time_next]
+    #         sigma = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
+    #         c = (1 - alpha_next - sigma ** 2).sqrt()
+    #         noise = torch.randn_like(img)
+    #         img = x_start * alpha_next.sqrt() + \
+    #               c * pred_noise + \
+    #               sigma * noise
+
+    #     return img
+
     @torch.no_grad()
-    def fast_sample(self, shape, clip_denoised=True):
-        batch, device, total_timesteps, sampling_timesteps, eta = \
-            shape[0], self.betas.device, self.num_timesteps, self.sampling_timesteps, self.eta
+    def fast_sample(self, shape, img, clip_denoised=True):
+        batch, device, total_timesteps, sampling_timesteps, eta = (
+            shape[0],
+            self.betas.device,
+            self.num_timesteps,
+            self.sampling_timesteps,
+            self.eta,
+        )
 
         # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
         times = torch.linspace(-1, total_timesteps - 1, steps=sampling_timesteps + 1)
 
         times = list(reversed(times.int().tolist()))
-        time_pairs = list(zip(times[:-1], times[1:]))  # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
-        img = torch.randn(shape, device=device)
+        time_pairs = list(
+            zip(times[:-1], times[1:])
+        )  # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
 
-        # Apply Treering watermark
-        if self.watermark == 'Treering':
-            save_dir = 'treering'
-            img = self.watermark_Treering(img, save_dir=save_dir)
-
-        # Apply Gaussian Shading watermark
-        elif self.watermark == 'GS': 
-            img = self.watermark_GS(img)
-            img = img.to(device)
-
-        for time, time_next in tqdm(time_pairs, desc='sampling loop time step'):
+        for time, time_next in tqdm(time_pairs, desc="sampling loop time step"):
             time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
-            pred_noise, x_start, *_ = self.model_predictions(img, time_cond, clip_x_start=clip_denoised)
+            pred_noise, x_start, *_ = self.model_predictions(
+                img, time_cond, clip_x_start=clip_denoised
+            )
 
             if time_next < 0:
                 img = x_start
                 continue
 
-            alpha = self.alphas_cumprod[time]
-            alpha_next = self.alphas_cumprod[time_next]
-            sigma = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
-            c = (1 - alpha_next - sigma ** 2).sqrt()
+            alpha = self.alphas_cumprod[time]  # t
+            alpha_next = self.alphas_cumprod[time_next]  # t-1
+            sigma = (
+                eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
+            )
+            c = (1 - alpha_next - sigma**2).sqrt()
             noise = torch.randn_like(img)
-            img = x_start * alpha_next.sqrt() + \
-                  c * pred_noise + \
-                  sigma * noise
+            img = x_start * alpha_next.sqrt() + c * pred_noise + sigma * noise
 
         return img
     
@@ -347,10 +387,86 @@ class Diffusion_TS(nn.Module):
         #return torch.stack(inverted_latents)
         return img
 
-    def generate_mts(self, batch_size=16):
-        feature_size, seq_length = self.feature_size, self.seq_length
-        sample_fn = self.fast_sample if self.fast_sampling else self.sample
-        return sample_fn((batch_size, seq_length, feature_size))
+    # def generate_mts(self, batch_size=16):
+    #     feature_size, seq_length = self.feature_size, self.seq_length
+    #     sample_fn = self.fast_sample if self.fast_sampling else self.sample
+    #     return sample_fn((batch_size, seq_length, feature_size))
+
+    def generate_mts(self, args, batch_size=16, watermark=""):
+        shape = (batch_size, self.seq_length, self.feature_size)
+        device = self.betas.device
+
+        if watermark in ["TimeWak", "SpatBDIA"]:
+            sample_fn = self.bdia_sample if self.fast_sampling else self.sample
+        else:
+            sample_fn = self.fast_sample if self.fast_sampling else self.sample
+
+        init_latents = torch.randn(shape, device=device)
+
+        if watermark == "TR":
+            st0 = torch.get_rng_state()
+            torch.manual_seed(217)
+
+            latents = torch.empty((0, shape[1], shape[2]), device=device)
+            gt_patches = np.empty([0, 1, shape[1], shape[2]])
+            watermarking_masks = np.empty([0, 1, shape[1], shape[2]], dtype=bool)
+
+            for init_latent in init_latents:
+                # change from two-dimensional table into watermark size [1, c, l, w]
+                init_latent = init_latent.unsqueeze(0).unsqueeze(0)
+                init_latent_w = copy.deepcopy(init_latent)
+                gt_patch = get_watermarking_pattern(
+                    args, device, shape=init_latent_w.shape
+                )
+                # get watermarking mask
+                watermarking_mask = get_watermarking_mask(init_latent_w, args, device)
+                # inject watermark
+                latent = inject_watermark(
+                    init_latent_w, watermarking_mask, gt_patch, args
+                )
+                latent = latent.squeeze(0)  # (bs, seq_len, feat)
+
+                latents = torch.vstack((latents, latent))
+                gt_patches = np.row_stack([gt_patches, gt_patch.detach().cpu().numpy()])
+                watermarking_masks = np.row_stack(
+                    [watermarking_masks, watermarking_mask.detach().cpu().numpy()]
+                )
+            latents = latents.to(device)
+            torch.set_rng_state(st0)
+
+            return sample_fn(shape, latents), gt_patches, watermarking_masks
+
+        elif watermark == "GS":
+            st0 = torch.get_rng_state()
+            torch.manual_seed(217)
+
+            latents = torch.zeros_like(init_latents)
+            latent_seed = torch.randint(
+                0, 2, (init_latents.shape[1], init_latents.shape[2])
+            )
+
+            for i in range(init_latents.shape[0]):  # Loop through each sample
+                for j in range(init_latents.shape[1]):  # Loop through each time steps
+                    for k in range(init_latents.shape[2]):  # Loop through each features
+                        if latent_seed[j, k] == 0:
+                            # Even index, sample from the left half of the Gaussian distribution
+                            while True:
+                                sample = torch.randn(1)
+                                if sample < 0:
+                                    latents[i, j, k] = sample
+                                    break
+                        else:
+                            while True:
+                                sample = torch.randn(1)
+                                if sample >= 0:
+                                    latents[i, j, k] = sample
+                                    break
+
+            latents = latents.to(device)
+            torch.set_rng_state(st0)
+        else:
+            latents = init_latents
+        return sample_fn(shape, latents)
 
     @property
     def loss_fn(self):
