@@ -195,32 +195,44 @@ class Diffusion_TS(nn.Module):
 
     @torch.no_grad()
     def watermark_GS(self, img):
-        print("Shape of img (initial latents): ", img.shape)
-        samples, seq_len, features = img.size()
-        init_latents = img.view(samples, seq_len*features)
-        latents_2 = torch.zeros_like(init_latents)
-        print("initial shape of latents_2: ", latents_2.shape)
+        # print("Shape of img (initial latents): ", img.shape)
+        # samples, seq_len, features = img.size()
+        # init_latents = img.view(samples, seq_len*features)
+        # latents_2 = torch.zeros_like(init_latents)
+        # print("initial shape of latents_2: ", latents_2.shape)
 
-        latent_seed = torch.randint(0, 2, (init_latents.shape[1],)) 
+        # latent_seed = torch.randint(0, 2, (init_latents.shape[1],)) 
+        st0 = torch.get_rng_state()
+        torch.manual_seed(217)
+
+        init_latents = torch.randn(img.shape)
+
+        latents = torch.zeros_like(init_latents)
+        latent_seed = torch.randint(
+            0, 2, (init_latents.shape[1], init_latents.shape[2])
+        )
         for i in range(init_latents.shape[0]):  # Loop through each sample
-            for j in range(init_latents.shape[1]):  # Loop through each dimension
-                if latent_seed[j] == 0:  # Even index, sample from the left half of the Gaussian distribution
-                    while True:
-                        sample = torch.randn(1)
-                        if sample < 0:
-                            latents_2[i, j] = sample
-                            break
-                else:
-                    while True:
-                        sample = torch.randn(1)
-                        if sample >= 0:
-                            latents_2[i, j] = sample
-                            break
+            for j in range(init_latents.shape[1]):  # Loop through each time steps
+                for k in range(init_latents.shape[2]):  # Loop through each features
+                    if latent_seed[j, k] == 0:
+                        # Even index, sample from the left half of the Gaussian distribution
+                        while True:
+                            sample = torch.randn(1)
+                            if sample < 0:
+                                latents[i, j, k] = sample
+                                break
+                    else:
+                        while True:
+                            sample = torch.randn(1)
+                            if sample >= 0:
+                                latents[i, j, k] = sample
+                                break
         #latents_2 = latents_2.to(device)
         #latents_1 = init_latents.to(device)
-        latents_2 = latents_2.view(samples, seq_len, features)
-        print("final shape of latents_2: ", latents_2.shape)
-        return latents_2
+        # latents_2 = latents_2.view(samples, seq_len, features)
+        # print("final shape of latents_2: ", latents_2.shape)
+        #latents = latents.to(device)
+        return latents
 
     @torch.no_grad()
     def watermark_Treering(self, img, save_dir):
