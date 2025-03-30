@@ -131,7 +131,7 @@ class CustomDataset(Dataset):
         """Reads a single .csv
         """
         df = pd.read_csv(filepath, header=0)
-        if name == 'etth':
+        if name == 'etth' or name == 'pollution':
             df.drop(df.columns[0], axis=1, inplace=True)
         data = df.values
         scaler = MinMaxScaler()
