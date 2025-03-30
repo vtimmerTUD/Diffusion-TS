@@ -133,6 +133,8 @@ class CustomDataset(Dataset):
         df = pd.read_csv(filepath, header=0)
         if name == 'etth' or name == 'pollution':
             df.drop(df.columns[0], axis=1, inplace=True)
+        if name == 'pollution':
+            df['cbwd'] = pd.Categorical(df['cbwd']).codes
         data = df.values
         scaler = MinMaxScaler()
         scaler = scaler.fit(data)
