@@ -17,7 +17,7 @@ if gpus:
         print(e)
 
 import torch
-from MMD import BMMD, cross_correlation_distribution, BMMD_Naive, VDS_Naive
+from Utils.MMD import BMMD, cross_correlation_distribution, BMMD_Naive, VDS_Naive
 
 # Source: https://github.com/wmd3i/PaD-TS/blob/main
 
